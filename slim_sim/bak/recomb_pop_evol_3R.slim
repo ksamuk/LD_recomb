@@ -1,0 +1,95 @@
+initialize() {
+
+	//initializeSLiMOptions(mutationRuns=64);
+
+		
+	//*****************
+	//VARIABLE ELEMENTS
+	//*****************
+	
+	// **** GENE FLOW ****
+	
+	//GENE FLOW PARAMETERS
+	defineConstant("gene_flow", 1); // is there any gene flow?
+	//defineConstant("init_pop2_prop", 0.0); // initial prop of population that are migrants
+	defineConstant("migration_rate_1", 0.2); // migration rate (starting in 2nd generation)
+	defineConstant("migration_rate_2", 0.01); // migration rate (starting in 2nd generation)
+
+	//*****************
+	//FIXED ELEMENTS
+	//*****************
+	
+	//THETA
+	
+	//(1.2e-06)*1500*4 = 0.0072
+	
+	//MUTATIONS
+	initializeMutationRate(1.2e-06);
+	initializeMutationType("m1", 0.5, "f", 0.0);   // neutral mutation
+	//m1.convertToSubstitution = F; // keep tracking p1 adaptive alleles even if they fix
+	//m1.mutationStackPolicy = "f";
+	
+	//CHROMOSOME PROPERTIES
+	chr_start = 0;
+	chr_end = 27905053;
+	
+	
+	//GENOMIC ELEMENTS
+	initializeGenomicElementType("g1", m1, 1.0);
+	initializeGenomicElement(g1, 0, chr_end);
+	
+	
+	//RECOMBINATION MAP
+	// read Drosophila 3R map from Comeron et al. 2012
+	lines = readFile("data/3R_recomb_rates.txt"); 
+	rates = NULL;
+	ends = NULL;
+	for (line in lines) 
+	{
+	   components = strsplit(line, "\t");
+		ends = c(ends, asInteger(components[0])); 
+		rates = c(rates, asFloat(components[1]));
+	}
+	
+	ends = c(ends[1:(size(ends)-1)] - 2, chr_end); rates = rates * 1e-8;
+	initializeRecombinationRate(rates, ends);
+
+
+	
+		
+}
+
+
+1 {
+
+	//INITIALIZE POPULATIONS
+	sim.addSubpop("p1", 1500); // the mother population
+	
+		
+}
+
+2:19999{
+
+if(sim.generation % 100 == 0){
+
+print(paste0(c(sim.generation, " generations...")));
+
+}
+
+
+
+}
+
+
+20000 late()
+{
+	sim.simulationFinished();
+	//p1.outputVCFSample(10, filePath = "output_vcf.vcf");
+	p1.outputVCFSample(40, filePath = "data/slim_output/recomb_3R_t0.0072_g20000_n40.vcf");
+	
+	
+}
+
+
+
+

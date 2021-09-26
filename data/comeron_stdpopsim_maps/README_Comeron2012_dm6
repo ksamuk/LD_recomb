@@ -1,0 +1,8 @@
+This directory contains a Drosophila melanogaseter genetic map for the dm6 build, comeron.2012.10.15.dm6.txt. 
+
+Creation of the original map is decribed in Comeron et al. 2012 (https://doi.org/10.1371/journal.pgen.1002905) and the original map was downloaded from ftp://ftp.flybase.org/flybase/associated_files/Comeron.2012.10.15.xlsx.
+
+Liftover from dm3 to dm6 was achieved with the following python script, liftOver_dm3_to_dm6_COMERON.py, using the UCSC liftover tool and the dm3 to dm6 chain downloaded from http://hgdownload.soe.ucsc.edu/goldenPath/dm3/liftOver/dm3ToDm6.over.chain.gz. Only midpoint coordinates were lifted over, and the original recombination rates were used for all midpoints.  
+
+Jeff Adrion
+02/08/2019

@@ -1,0 +1,303 @@
+initialize() {
+ 
+ 	// POP GEN CONSTANTS
+	// these are derived from empirical estimates from d. melanogaster
+	// values from stdpopsim
+	defineConstant("dmel_mutation_rate", 5.49e-09);
+	defineConstant("dmel_mean_recomb_rate", 2.23e-08);
+	defineConstant("dmel_ne_estimate", 1720600);		
+	
+	// hard coded parameters for execution in slimgui
+	if (exists("slimgui")){
+	
+	
+		// demography
+		defineConstant("mig_rate_m12", 0.001);
+		defineConstant("mig_rate_m21", 0.001);
+		defineConstant("p1_size", 1000);
+		defineConstant("p2_prop", 0.1);
+		defineConstant("split_generation", 1000);
+		defineConstant("gene_flow_generation", 2000);
+
+	
+		// general genomic properties
+		defineConstant("chr_length", 100000);
+		
+		// recombination rate dynamics
+		defineConstant("recomb_rate_change_dir", 1.0);
+		defineConstant("recomb_rate_cha", 0.5);
+		defineConstant("variable_recomb", 0);
+		defineConstant("recomb_map_file", "/Users/ksamuk/Dropbox (Duke Bio_Ea)/Projects/recomb_pop_diff/meta/recomb_windows_slim_5k.txt");
+
+		// output settings
+		defineConstant("samp_interval", 1000);
+		defineConstant("out_folder_ba", "/Users/ksamuk/Dropbox (Duke Bio_Ea)/Projects/recomb_pop_diff/slim_sim/bak/recomb_out");
+		
+	} 
+	
+	// SCALING FACTOR
+	// 1720600/1000 = 1720.6 
+	defineConstant("scaling_factor", dmel_ne_estimate/p1_size); 
+
+	// MUTATIONS
+	defineConstant("mutation_rate", dmel_mutation_rate*scaling_factor) ;
+	initializeMutationRate(mutation_rate);
+	initializeMutationType("m1", 0.5, "f", 0.0);   // neutral mutation
+	
+	
+	// "last" mutation stack policy
+	//m1.mutationStackPolicy = "l";
+	//m1.convertToSubstitution = T;
+	
+	// DEMOGRAPHY
+	
+	// population size of the original population
+	//defineConstant("p1_size", p1_si);
+	
+	// is there gene flow? if so, what rate?
+	defineConstant("migration_rate_m12", asFloat(mig_rate_m12)); 
+	defineConstant("migration_rate_m21", asFloat(mig_rate_m21)); 
+	defineConstant("allopatric", mig_rate_m12 == 0 & mig_rate_m21 == 0);
+	
+	// RECOMBINATION
+	
+	// the scaled recombination rate
+	defineConstant("recomb_rate",  0.5*(1-(1-2*(dmel_mean_recomb_rate))^scaling_factor));
+	
+	// the effect of the modifier, relative to the maximum recomb rate
+	// ex 0.5 = half the maximum rate 
+	defineConstant("recomb_rate_change", asFloat(recomb_rate_cha));
+	
+	// the direction of the change in recombination
+	// -1 = the daughter population gets the modifier (recomb decreases)
+	// 1 = the daughter population loses the modifier (recomb increases)
+  if(recomb_rate_change_dir == 1){
+  
+  	defineConstant("recomb_rate_change_direction", 1);
+  
+  } else{
+  
+  	defineConstant("recomb_rate_change_direction", -1);
+  
+  }	
+	
+	
+	// if modelling variable rates, read them in and set them as such
+	// otherwise set a uniform profile
+	if(variable_recomb == 1){
+		
+		lines = readFile(recomb_map_file);
+		rates = NULL;
+		ends = NULL;
+		
+		for (line in lines)
+		{
+			components = strsplit(line, " ");
+			ends = c(ends, asInteger(components[0]));
+			rates = c(rates, asFloat(components[1]));
+		}
+		
+		ends = c(ends[1:(size(ends)-1)] - 2, chr_length);
+		rates = rates * 1e-8;
+		rates = 0.5*(1-(1-2*(rates))^scaling_factor);
+		initializeRecombinationRate(rates, ends);
+		
+	} else {
+	// "Note that a recombination rate of 1 centimorgan/Mbp corresponds to a recombination rate of 1e-8 in the units used by SLiM."
+		initializeRecombinationRate(recomb_rate);
+	}
+	
+	// CHROMOSOMAL PROPERTIES
+	
+	// genomic elements
+	initializeGenomicElementType("g1", m1, 1.0); // neutral mutations	
+	initializeGenomicElement(g1, 0, chr_length-1);
+	
+	// OUTPUT
+	
+	// frequency at which populations are sampled
+	// e.g. 1000 = every thousand generations
+	defineConstant("sample_interval", samp_interval);
+	
+	// the generations at which samples are drawn
+	defineConstant("sampling_generations", sort(c(19998, seq(20000, 20030, sample_interval), 20100, 21000)));
+	
+	// adjust number of individuals sampled
+	defineConstant("sample_inds", 25);
+	
+	// base output folder
+	seed = format("%.0i",getSeed());
+	defineConstant("out_folder_base", out_folder_ba);
+	defineConstant("out_folder", paste0(c(out_folder_base, seed)));
+	
+	print(sampling_generations);
+
+
+
+}
+
+recombination() {
+	
+	// check for the modifier
+	// and modify recombination breakpoints accordingly
+ 
+  if (individual.tag == 0){
+  
+	  return F;
+     
+  } else if(individual.tag == 1){
+  
+    if (recomb_rate_change_dir == -1){
+
+  			// a modifier that decreases recombination rate
+  			// randomly remove breakpoints, based on recomb_rate_change (draws of 1 result in removing breakpoints)
+  			breakpoints = breakpoints[!(rbinom(size(breakpoints), 1, recomb_rate_change))];
+  			return T;
+        
+  	} else if(recomb_rate_change_dir == 1){
+  			
+  			// a modifier that increases recombination rate
+  			// draw a second set of breakpoints, downsampled based on the percent increase
+  			// then ADD those to the original breakpoints
+  			
+  			additional_breakpoints = sim.chromosome.drawBreakpoints();
+  			additional_breakpoints = additional_breakpoints[rbinom(size(additional_breakpoints), 1, recomb_rate_change) == 1];
+  			
+  			// join to original breakpoints
+  			// note: not sure what SLiM does with repeat breakpoints (ignores them?)
+  			breakpoints = sort(c(breakpoints,additional_breakpoints));
+  			return T; 
+  		
+  	} 
+  
+  }
+}
+
+
+1 {
+	
+	// create a new output folder based on the random seed
+	seed = format("%.0i",getSeed());
+	
+	//out_folder = paste0(c(out_folder_base, seed));
+	createDirectory(out_folder);
+	
+	// create the mother population
+	sim.addSubpop("p1", p1_size); // the mother population
+	
+	// if we are modelling an increase in recomb rate 
+	// the mother population starts with suppressed recomb 
+
+}
+
+early() {
+	
+	
+	// perform population split (when necessesary)
+	
+	if (sim.generation == split_generation){
+	
+		// perform the population split
+		// sizes based on the initial size (p1_si) and the split proportion (p2_prop)	
+		sim.addSubpopSplit("p2", asInteger(round(p2_prop * p1_size)), p1); 
+		p1.setSubpopulationSize(asInteger(round((1-p2_prop) * p1_size))); 
+		p2.individuals.tag = 1;
+
+	}
+	
+	// set pop specific recombination rate tags
+		
+	p1.individuals.tag = 0;
+	
+	if (sim.generation >= split_generation){
+		
+		p2.individuals.tag = 1;	
+		
+	}
+	
+	
+	// set gene flow based on the defined timing
+	if(!(allopatric) & sim.generation == gene_flow_generation){
+	
+		// note that mig_rate_21 = migration from p2 into p1
+		// note that mig_rate_12 = migration from p1 into p2
+
+		p1.setMigrationRates(p2, mig_rate_m21);
+		p2.setMigrationRates(p1, mig_rate_m12);
+		
+	}
+	
+	
+	
+	// perform output if generation matches anything in the sampling list
+	
+	if(match(sim.generation, sampling_generations) != -1){
+	
+		if(sim.generation >= split_generation){
+		
+			p1.outputVCFSample(sample_inds, replace = F, filePath = paste0(c(out_folder,  "/", "p1_", sim.generation, ".vcf")));
+			p2.outputVCFSample(sample_inds, replace = F, filePath = paste0(c(out_folder,  "/", "p2_", sim.generation, ".vcf")));
+
+		} else{
+
+		  p1.outputVCFSample(sample_inds, replace = F, filePath = paste0(c(out_folder,  "/", "p1_", sim.generation, ".vcf")));
+			
+		}
+	}
+	
+	
+	// purge locally fixed alleles in allopatric models
+	// post split only
+	if(sim.generation > split_generation & allopatric){
+	
+		if (sim.generation % 4 == 0) {
+			
+			// list all the m1 mutations
+			all_muts = sim.mutationsOfType(m1);
+			
+			// flag m1 mutations fixed in p1
+			p1_freq = sim.mutationFrequencies(p1, all_muts);
+			p1_remove = all_muts[(p1_freq == 1)];
+			
+			// flag m1 mutations fixed in p2
+			p2_freq = sim.mutationFrequencies(p2, all_muts);
+			p2_remove = all_muts[(p2_freq == 1)];
+			
+			// convert m1 mutations fixed in either p1 or p2 to substutions
+			p1.genomes.removeMutations(p1_remove, T);
+			p2.genomes.removeMutations(p2_remove, T);
+		}
+		
+	}
+	
+
+
+}
+
+21000 late(){
+  
+  // complete final output and write params to file
+	seed = format("%.0i",getSeed());
+
+  // write the simulation parameters to a separate file
+	param_file = paste0(c(out_folder,  "/simulation.params"));
+	
+	param_headers = paste(c("dmel_mutation_rate", "dmel_mean_recomb_rate", "dmel_ne_estimate", "mig_rate_m12", "mig_rate_m21", "p1_size", "p2_prop", "mutation_rate", "recomb_rate", "recomb_rate_cha", "recomb_rate_change_dir", "variable_recomb", "chr_length", "samp_interval", "split_generation", "gene_flow_generation", "seed"));
+	
+	param_string = paste(c(dmel_mutation_rate, dmel_mean_recomb_rate, dmel_ne_estimate, mig_rate_m12, mig_rate_m21, p1_size, p2_prop, mutation_rate, recomb_rate, recomb_rate_cha, recomb_rate_change_dir, variable_recomb, chr_length, samp_interval, split_generation, gene_flow_generation, seed));
+	 
+	writeFile(param_file, param_headers, append = F);
+	writeFile(param_file, param_string, append = T);
+ 
+ //compress output
+ 
+ system(paste0(c("gzip ", out_folder,  "/*.txt")));
+ system(paste0(c("gzip ", out_folder,  "/*.vcf")));
+	
+ sim.simulationFinished();
+
+}
+
+
+
+

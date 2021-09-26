@@ -1,0 +1,115 @@
+initialize() {
+
+	
+	//THETA
+	
+	//(0.00000175)*1000*4 = 0.007
+	//(0.00000175)*500*4 = 0.0035
+	
+	//MUTATIONS
+	initializeMutationRate(0.00000175);
+	initializeMutationType("m1", 0.5, "f", 0.0);   // neutral mutation
+	initializeMutationType("m2", 0.5, "f", 0.0);  // recombination modifier mutation 
+	
+	// m1 stack policy -- could this be used to allow population-level fixation...?
+	m1.mutationStackPolicy = "f"; 
+	//mt.mutationStackGroup = locus; 
+	m1.convertToSubstitution = T;
+	
+	// VARIABLE ELEMENTS
+	
+	// population size of the mother and daughter populations
+	defineConstant("p1_size", 100);
+	defineConstant("p2_size", 100);
+	
+	// is there gene flow? if so, what rate?
+	defineConstant("gene_flow", 0);
+	defineConstant("migration_rate", 0); // symetrical
+	
+	//THE ABRITRARY LOCUS FOR THE RECOMBINATION MODIFIER ALLELE (m2)
+	defineConstant("recomb_locus", 25000);
+	
+	// THE FRACTIONAL DECREASE IN RECOMBINATION RATE CAUSED BY THE MODIFIER
+	// ex 0.5 = 1/2 recombiantion rate in daughter pop
+	defineConstant("recomb_frac", 0.5);
+	
+	// THE TOTAL LENGTH OF THE CHROMOSOME
+	defineConstant("chr_length", 1000000);
+	
+	// CHROMOSOME PROPERTIES
+	// (not varied for now)
+	chr_start = 0;
+	chr_end = 1000000;
+	
+	
+	//GENOMIC ELEMENTS
+	initializeGenomicElementType("g1", m1, 1.0);
+	initializeGenomicElement(g1, 0, chr_end);
+	
+	//RECOMBINATION RATE
+	//"Note that a recombination rate of 1 centimorgan/Mbp corresponds to a recombination rate of 1e-8 in the units used by SLiM."
+	initializeRecombinationRate(3e-6);
+
+	
+		
+}
+
+
+1 {
+
+	//INITIALIZE POPULATIONS
+	sim.addSubpop("p1", p1_size); // the mother population
+		
+		
+}
+
+500{
+	// A NEW DAUGHTER POPULATION FORMS 
+	sim.addSubpopSplit("p2", p2_size, p1);
+
+	// INITIALIZE RECOMBINATION SUPRESSING ALLELES (p2 only)
+	target2_inv = sample(p2.individuals, p2.individualCount); // all p2 inds get the modifier
+	target2_inv.genomes.addNewDrawnMutation(m2, recomb_locus);
+	
+	
+	// set gene flow (if any)
+	if (gene_flow == 1){
+		p1.setMigrationRates(p2, migration_rate);
+		p2.setMigrationRates(p1, migration_rate);
+	}
+	
+}
+
+10000:19999{
+
+}
+
+recombination() {
+
+	// if you don't have the modifier, don't  modify recomibnation rate
+	if (!(genome1.containsMarkerMutation(m2, recomb_locus) == genome2.containsMarkerMutation(m2, recomb_locus)))		return F;
+	
+	// randomly suppress breakpoints, based on recomb_frac (draws of 1 result in removing breakpoints)
+	suppressed_breakpoints = rbinom(size(breakpoints), 1, recomb_frac);
+	
+	// filter breakpoints based on the random draw
+	breakpoints = breakpoints[!suppressed_breakpoints];
+	return T;
+}
+
+
+20000 late(){
+	sim.outputFull("/Users/Kieran/Dropbox/Dropbox (Duke Bio_Ea)/recomb_pop_diff/recomb_pop_diff/data/slim_output/slim_out_test_full.txt");
+	sim.outputFixedMutations("/Users/Kieran/Dropbox/Dropbox (Duke Bio_Ea)/recomb_pop_diff/recomb_pop_diff/data/slim_output/slim_out_test_fixed.txt");
+	sim.simulationFinished();
+	
+	//p1.outputVCFSample(10, filePath = "output_vcf.vcf");
+	//p1.outputVCFSample(40, filePath = "data/slim_output/recomb_var_rate_t0.0072_g20000_n40_.vcf");
+	
+	
+}
+
+
+
+
+ 

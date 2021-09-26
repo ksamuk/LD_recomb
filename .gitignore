@@ -11,9 +11,6 @@
 # Example code in package build process
 *-Ex.R
 
-# Output files from R CMD build
-/*.tar.gz
-
 # Output files from R CMD check
 /*.Rcheck/
 
@@ -37,3 +34,7 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+
+# omit raw slim output 
+/data/slim_output/*
+/data/slim_output_sub/*
